@@ -1,0 +1,918 @@
+
+
+
+# Libraries installation
+
+#install.packages("knitr")
+#install.packages("dplyr")
+#install.packages("mltools")
+#install.packages("data.table")
+#install.packages("ggplot2")
+#install.packages("purrr")
+#install.packages("class")
+#install.packages("caret")
+#install.packages("GGally")
+#install.packages("factoextra")
+
+knitr::opts_chunk$set(echo = TRUE) # sets report
+
+# Libraries import
+
+library(dplyr) # imports library to clean "Unknown" replacing with NA
+library(mltools) # imports library to apply the one_hot encoder
+library(data.table) # imports library to apply the one_hot encoder
+library(ggplot2) # imports library to visualize graphs
+library(purrr) # imports library to ease computations
+library(class) # imports library for k-nn
+library(caret) # imports library for data partition
+library(GGally) # imports library for combining geometric objects with transformed data
+library(factoextra) # imports library for extracting and visualizing the output of multivariate data analyses
+library(pROC)
+
+## ---------------------------------------------- IMPORTING THE DATA-SETS ------------------------------------------------------------
+
+# Importing the train data-set
+bank_accounts_train = read.csv("csv/bank_accounts_train.csv", sep = ",", dec = ".", header = T, colClasses = "character") # imports train data-set as data-frame from .csv file with relative path
+
+print("Train dataframe:")
+str(bank_accounts_train)
+
+
+# Importing the test data-set
+bank_accounts_test <- read.csv("csv/bank_accounts_test.csv", sep = ",", dec = ".", header = T, colClasses = "character") # imports test data-set as data-frame from .csv file with relative path
+
+print("Test dataframe:")
+str(bank_accounts_test)
+
+
+## ---------------------------------------------- CLEANING THE DATA-SETS ---------------------------------------------------------------
+
+# Defining categorical variables
+catVar <- c('Gender', 'Education_Level', 'Marital_Status', 'Card_Category') 
+
+# Replacing all occurrences of "Unknown" with NA in the specified categorical features using the dplyr library.
+cleaned_bank_accounts_train <- bank_accounts_train %>% mutate_at(catVar, ~na_if(., "Unknown"))
+cleaned_bank_accounts_test <- bank_accounts_test %>% mutate_at(catVar, ~na_if(., "Unknown"))
+
+# Checking for duplicate IDs
+length(unique(cleaned_bank_accounts_train$CLIENTNUM))                                                   # Search for id duplicates
+n_occur <- data.frame(table(cleaned_bank_accounts_train$CLIENTNUM))                                     # Table with occurrences of each id
+n_occur[n_occur$Freq > 1,]                                                                              # Duplicated ids and their frequencies
+cleaned_bank_accounts_train[cleaned_bank_accounts_train$CLIENTNUM %in% n_occur$Var1[n_occur$Freq > 1],] # Duplicates row
+cleaned_bank_accounts_train <- slice(cleaned_bank_accounts_train, 1:(n()-2))                            # Deletes duplicates
+
+length(unique(cleaned_bank_accounts_test$CLIENTNUM)) 
+n_occur <- data.frame(table(cleaned_bank_accounts_test$CLIENTNUM)) 
+n_occur[n_occur$Freq > 1,] # no duplicates here
+
+# Converting numerical variables from character strings to numeric values by iterating through the list.
+numVarInChar <- c('Customer_Age', 'Dependent_count', 'Months_on_book', 'Total_Relationship_Count', 'Months_Inactive_12_mon', 'Contacts_Count_12_mon', 'Credit_Limit', 'Total_Revolving_Bal', 'Avg_Open_To_Buy', 'Total_Amt_Chng_Q4_Q1', 'Total_Trans_Amt', 'Total_Trans_Ct', 'Total_Ct_Chng_Q4_Q1', 'Avg_Utilization_Ratio', 'Income') # generates a list of numerical variables saved as characters strings
+for (var in numVarInChar) {
+  cleaned_bank_accounts_train[[var]] <- as.numeric(cleaned_bank_accounts_train[[var]])
+  cleaned_bank_accounts_test[[var]] <- as.numeric(cleaned_bank_accounts_test[[var]])
+}
+cleaned_bank_accounts_train[['Closed_Account']] <- as.numeric(cleaned_bank_accounts_train[['Closed_Account']])
+
+# Printing the cleaned data-frames
+print("Cleaned train dataframe:")
+str(cleaned_bank_accounts_train) 
+
+print("Cleaned test dataframe:")
+str(cleaned_bank_accounts_test) 
+
+
+## ---------------------------------------------- ENCODING CATEGORICAL VALUES IN THE DATA-SETS ------------------------------------------------
+
+
+# Factorizing categorical values in the data frames by iterating through the list of categorical variables and converting them to factors.
+encoded_bank_accounts_train <- cleaned_bank_accounts_train
+encoded_bank_accounts_test <- cleaned_bank_accounts_test
+
+fact_bank_accounts_train <- cleaned_bank_accounts_train
+fact_bank_accounts_test <- cleaned_bank_accounts_test
+
+for (var in catVar) {
+  fact_bank_accounts_train[[var]] <- as.factor(encoded_bank_accounts_train[[var]])
+  fact_bank_accounts_test[[var]] <- as.factor(encoded_bank_accounts_test[[var]])
+}
+
+# One-hot encoding the categorical variables using the mltools library.
+encoded_bank_accounts_train <- one_hot(as.data.table(fact_bank_accounts_train))
+encoded_bank_accounts_test <- one_hot(as.data.table(fact_bank_accounts_test))
+
+# Printing the encoded data frames.
+str(encoded_bank_accounts_train)
+str(encoded_bank_accounts_test)
+
+
+
+## ---------------------------------------------- DATA VISUALIZATION ---------------------------------------------------------------
+
+# Visualizing number of NA values count for each variable
+colSums(is.na(cleaned_bank_accounts_train)) 
+colSums(is.na(cleaned_bank_accounts_test))
+
+# Visualizing the count of missing values for each variable
+colSums(is.na(cleaned_bank_accounts_train)) 
+colSums(is.na(cleaned_bank_accounts_test)) 
+
+
+## ---------------------------------------------- SUMMARIZING THE DATA ---------------------------------------------------------------
+
+# printing the summary of the cleaned data-frames
+summary(cleaned_bank_accounts_train) 
+summary(cleaned_bank_accounts_test) 
+
+
+## ---------------------------------------------- PLOTTTING GRAPHS ---------------------------------------------------------------
+
+# Plotting the correlation matrix
+
+#GGally::ggpairs(cleaned_bank_accounts_train, cardinality_threshold = 20, columns = (2:20))
+
+
+## ---------------------------------------------- DATA ANALYSIS ---------------------------------------------------------------
+
+# Distribution of the variables answering 3,4,5
+table(cleaned_bank_accounts_train$Closed_Account)
+prop.table(table(cleaned_bank_accounts_train$Closed_Account))  
+
+
+
+## ---------------------------------------------- DATA PLOTS ---------------------------------------------------------------
+
+# Plotting the number of active and closed accounts by age and gender
+age_ranges = c("01-05","06-10","11-15","16-20","21-25","26-30","31-35","36-40","41-45","46-50","51-55","56-60","61-65","66-70","71-75","76-80","81-85","86-90","91-95","96-100")
+
+# Assign age ranges using `cut`
+cleaned_bank_accounts_train$age_range <- cut(cleaned_bank_accounts_train$Customer_Age,
+                                             breaks = seq(0, 100, by = 5),
+                                             right = FALSE,
+                                             labels = age_ranges)
+
+# Summarize data by age range
+data_summary <- cleaned_bank_accounts_train %>%
+  group_by(age_range, Gender, Closed_Account) %>%
+  summarise(accounts = n()) %>%
+  mutate(group = ifelse(Closed_Account == 0, paste(Gender, "Active Accounts"), paste(Gender, "Closed Accounts"))) %>%
+  ungroup() %>%
+  select(-Closed_Account) # Remove the Closed_Account column as its information is now incorporated in 'group'
+
+# Plotting the histogram
+ggplot(data_summary, aes(fill = group, y = accounts, x = age_range)) +
+  geom_bar(position = "stack", stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # Improve readability of x-axis labels
+  ggtitle("Number Of Active And Closed Accounts By Age And Gender")
+
+
+
+## ---------------------------------------------- DATA PLOTS ---------------------------------------------------------------
+
+# Plotting the number of active and closed accounts based on the duration of the account and the type of card.
+
+# Generating the list of chosen months on book bins
+months_on_book = c("01-06","07-12","13-18","19-24","25-30","31-36","37-42","43-48","49-54","55-60") 
+
+# Automatically assign 'months on book' bins
+cleaned_bank_accounts_train$months_on_book_bin <- cut(
+  cleaned_bank_accounts_train$Months_on_book,
+  breaks = seq(0, 60, by = 6),
+  right = FALSE,
+  labels = months_on_book
+)
+
+# Summarize data by months on book
+data_summary <- cleaned_bank_accounts_train %>%
+  group_by(months_on_book_bin, Card_Category, Closed_Account) %>%
+  summarise(accounts = n(), .groups = 'drop') %>%
+  mutate(group = ifelse(Closed_Account == 0, paste(Card_Category, "Active Accounts"), paste(Card_Category, "Closed Accounts"))) %>%
+  select(-Closed_Account)
+
+# Ploting the histogram
+ggplot(data_summary, aes(fill = group, y = accounts, x = months_on_book_bin)) +
+  geom_bar(position = "stack", stat = "identity") +
+  facet_wrap(~ Card_Category, scales = "free_y") + # Creates separate panels for each card type
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Number of Active and Closed Accounts by Months on Book and Card Type")
+
+
+
+
+## ---------------------------------------------- DATA PLOTS ---------------------------------------------------------------
+
+# Code for generating a pie chart and data frame for card type distribution
+
+# Aggregate card totals and calculate percentages
+card_distribution <- cleaned_bank_accounts_train %>%
+  group_by(Card_Category) %>%
+  summarise(Total = n()) %>%
+  mutate(Percentage = (Total / sum(Total)) * 100)
+
+# Rename columns for clarity
+card_distribution <- rename(card_distribution, Card_type = Card_Category)
+
+# Plot pie chart
+ggplot(card_distribution, aes(x = 1, y = Total, fill = Card_type)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y", start = 0) +
+  theme_void() +
+  labs(title = "Share Of Each Type Of Card Over Total", fill = "Card Type")
+
+# Display the percentage data frame
+card_distribution <- select(card_distribution, Card_type, Percentage)
+print(card_distribution)
+
+
+## ---------------------------------------------- DATA PLOTS ---------------------------------------------------------------
+
+# Analyzing the number of clients based on income distribution for open and closed accounts
+
+# Set the income ranges
+income_x = seq(5, 200, by = 5)
+
+# Initialize variables to store the counts
+active_y = numeric(length(income_x))
+closed_y = numeric(length(income_x))
+total_y = numeric(length(income_x))
+
+# Iterate over the income ranges
+for (i in 1:length(income_x)){
+  lower_bound = ifelse(i == 1, 0, income_x[i-1]) # Adjust the lower bound for the first bin
+  upper_bound = income_x[i]
+  
+  # Filter accounts within the current income bin
+  bin_DF = subset(cleaned_bank_accounts_train, Income > lower_bound & Income <= upper_bound)
+  
+  # Count the number of active and closed accounts in the bin
+  active_y[i] = sum(bin_DF$Closed_Account == 0)
+  closed_y[i] = sum(bin_DF$Closed_Account == 1)
+  total_y[i] = nrow(bin_DF)
+}
+
+# Plot the results
+plot(income_x, active_y, type = "l", col = "green", lwd = 2, ylim = c(0, max(total_y)), xlab = "Income (thousands of dollars)", ylab = "Number of accounts", main = "Number of Clients on Income Distribution")
+lines(income_x, closed_y, col = "orange", lwd = 2)
+lines(income_x, total_y, col = "red", lwd = 2)
+
+# Add a legend
+legend("topright", legend = c("Active accounts", "Closed accounts", "Total accounts"), col = c("green", "orange", "red"), lty = 1, cex = 0.8)
+
+
+## ---------------------------------------------- DATA PLOTS ---------------------------------------------------------------
+
+# Analyzing the number of clients based on the number of contacts count distribution for open and closed accounts
+
+# Set the ranges for the revolving balance
+rev_balance_x = seq(26, 2600, by = 26)
+active_y = numeric(length(rev_balance_x))
+closed_y = numeric(length(rev_balance_x))
+total_y = numeric(length(rev_balance_x))
+
+# Iterate over the ranges
+for (i in 1:length(rev_balance_x)){
+  lower_bound = ifelse(i == 1, 0, rev_balance_x[i-1]) # Adjust the lower bound for the first bin
+  upper_bound = rev_balance_x[i]
+  
+  # Filter accounts within the current revolving balance bin
+  bin_DF = subset(cleaned_bank_accounts_train, Total_Revolving_Bal > lower_bound & Total_Revolving_Bal <= upper_bound)
+  
+  # Count the number of active and closed accounts in the bin
+  active_y[i] = sum(bin_DF$Closed_Account == 0)
+  closed_y[i] = sum(bin_DF$Closed_Account == 1)
+  total_y[i] = nrow(bin_DF)
+}
+
+# Plot the results
+plot(rev_balance_x, active_y, type = "l", col = "green", lwd = 2, ylim = c(0, max(total_y)), xlab = "Total Revolving Balance (dollars)", ylab = "Number of accounts", main = "Number of Clients on Total Revolving Balance")
+lines(rev_balance_x, closed_y, col = "orange", lwd = 2)
+lines(rev_balance_x, total_y, col = "red", lwd = 2)
+
+# Add a legend
+legend("topleft", legend = c("Active accounts", "Closed accounts", "Total accounts"), col = c("green", "orange", "red"), lty = 1, cex = 0.8)
+
+
+
+## ---------------------------------------------- DATA PLOTS ---------------------------------------------------------------
+
+# Analyzing the number of clients based on the total transaction amount distribution for open and closed accounts
+
+# Set the ranges for the utilization ratio
+utilization_ratio_x = seq(10, 1000, by = 10)
+active_y = numeric(length(utilization_ratio_x))
+closed_y = numeric(length(utilization_ratio_x))
+total_y = numeric(length(utilization_ratio_x))
+
+# Iterate over the utilization ratio ranges
+for (i in 1:length(utilization_ratio_x)){
+  lower_bound = ifelse(i == 1, 0, utilization_ratio_x[i-1]) # Adjust the lower bound for the first bin
+  upper_bound = utilization_ratio_x[i]
+  
+  # Filter accounts within the current utilization ratio bin
+  bin_DF = subset(cleaned_bank_accounts_train, Avg_Utilization_Ratio > lower_bound & Avg_Utilization_Ratio <= upper_bound)
+  
+  # Count the number of active and closed accounts in the bin
+  active_y[i] = sum(bin_DF$Closed_Account == 0)
+  closed_y[i] = sum(bin_DF$Closed_Account == 1)
+  total_y[i] = nrow(bin_DF)
+}
+
+# Plot the results
+plot(utilization_ratio_x, active_y, type = "l", col = "green", lwd = 2, ylim = c(0, max(total_y)), xlab = "Average Utilization Ratio", ylab = "Number of Accounts", main = "Number of Clients by Average Utilization Ratio")
+lines(utilization_ratio_x, closed_y, col = "orange", lwd = 2)
+lines(utilization_ratio_x, total_y, col = "red", lwd = 2)
+
+# Add a legend
+legend("topright", legend = c("Active accounts", "Closed accounts", "Total accounts"), col = c("green", "orange", "red"), lty = 1, cex = 0.8, bty = "n", pt.cex = 2, inset = c(0.05, 0.05))
+
+
+## ---------------------------------------------- DATA PLOTS ---------------------------------------------------------------
+
+# Analyzing the number of clients based on the total transaction count distribution for open and closed accounts
+
+# Set the ranges for the total transaction count
+Total_Trans_Ct_x = seq(3, 150, by = 3)
+active_y = numeric(length(Total_Trans_Ct_x))
+closed_y = numeric(length(Total_Trans_Ct_x))
+total_y = numeric(length(Total_Trans_Ct_x))
+
+# Iterate over the ranges
+for (i in 1:length(Total_Trans_Ct_x)){
+  lower_bound = ifelse(i == 1, 0, Total_Trans_Ct_x[i-1]) # Adjust the lower bound for the first bin
+  upper_bound = Total_Trans_Ct_x[i]
+  
+  # Filter accounts within the current total transaction count bin
+  bin_DF = subset(cleaned_bank_accounts_train, Total_Trans_Ct > lower_bound & Total_Trans_Ct <= upper_bound)
+  
+  # Count the number of active and closed accounts in the bin
+  active_y[i] = sum(bin_DF$Closed_Account == 0)
+  closed_y[i] = sum(bin_DF$Closed_Account == 1)
+  total_y[i] = nrow(bin_DF)
+}
+
+# Plot the results
+plot(Total_Trans_Ct_x, active_y, type = "l", col = "green", lwd = 2, ylim = c(0, max(total_y)), xlab = "Total Transaction Count", ylab = "Number of Accounts", main = "Client Distribution by Total Transaction Count")
+lines(Total_Trans_Ct_x, closed_y, col = "orange", lwd = 2)
+lines(Total_Trans_Ct_x, total_y, col = "red", lwd = 2)
+
+# Add a legend
+legend("topright", legend = c("Active accounts", "Closed accounts", "Total accounts"), col = c("green", "orange", "red"), lty = 1, cex = 0.8, bty = "n", pt.cex = 2, inset = c(0.05, 0.05))
+
+
+## ---------------------------------------------- DATA PLOTS ---------------------------------------------------------------
+
+# Analyzing the number of clients based on the total transaction amount distribution for open and closed accounts
+
+# Generate summary for Active and Closed Accounts based on the number of inactive months
+active_summary <- aggregate(x = list(accounts = cleaned_bank_accounts_train$Closed_Account),
+                            by = list(inactive_months = cleaned_bank_accounts_train$Months_Inactive_12_mon, 
+                                      group = ifelse(cleaned_bank_accounts_train$Closed_Account == 0, "Active Accounts", "Closed Accounts")),
+                            FUN = function(x) sum(x == 0))
+
+closed_summary <- aggregate(x = list(accounts = cleaned_bank_accounts_train$Closed_Account),
+                            by = list(inactive_months = cleaned_bank_accounts_train$Months_Inactive_12_mon, 
+                                      group = ifelse(cleaned_bank_accounts_train$Closed_Account == 1, "Closed Accounts", "Active Accounts")),
+                            FUN = function(x) sum(x == 1))
+
+# Combine the summaries
+data_summary <- rbind(active_summary, closed_summary)
+
+# Ensure the 'inactive_months' column is treated as a factor for proper ordering in the plot
+data_summary$inactive_months <- factor(data_summary$inactive_months, levels = unique(data_summary$inactive_months))
+
+# Plotting the number of active and closed accounts by inactive months
+ggplot(data_summary, aes(x = inactive_months, y = accounts, fill = group)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = c("Active Accounts" = "green", "Closed Accounts" = "red")) +
+  xlab("Inactive Months") +
+  ylab("Number of Accounts") +
+  ggtitle("Number of Active and Closed Accounts by Inactive Months") +
+  theme_minimal()
+
+
+
+
+
+## ---------------------------------------------- DATA PLOTS ---------------------------------------------------------------
+
+# Ensure the Closed_Account is a factor with clear level names
+cleaned_bank_accounts_train$Closed_Account <- factor(cleaned_bank_accounts_train$Closed_Account, 
+                                                     levels = c(0, 1),
+                                                     labels = c("Active", "Closed"))
+
+# Now plot with the corrected labels
+boxplot(Income ~ Closed_Account, data = cleaned_bank_accounts_train, 
+        col = c("lightgreen", "salmon"), 
+        xlab = "Account Status", 
+        ylab = "Income (thousands dollars)",
+        main = "Income Distribution by Account Status")
+
+# If needed, explicitly set the x-axis labels to "Active" and "Closed"
+axis(1, at = c(1, 2), labels = c("Active", "Closed"))
+
+
+## --------------------------------------LOGISTIC REGRESSION--------------------------------------------------------
+
+# INCOME as regressor
+
+# Fit the logistic regression model
+logit_model <- glm(Closed_Account ~ Income, data = cleaned_bank_accounts_train, family = binomial(link="logit"))
+
+# Summarize the model
+summary(logit_model)
+
+# Plot the logistic regression model
+income_range <- with(cleaned_bank_accounts_train, seq(min(Income, na.rm = TRUE), max(Income, na.rm = TRUE), length.out = 100))
+newdata <- data.frame(Income = income_range)
+newdata$Probability <- predict(logit_model, newdata = newdata, type = "response")
+
+ggplot(newdata, aes(x = Income, y = Probability)) +
+  geom_line() +
+  labs(title = "Effect of Income on the Probability of Closing an Account",
+       x = "Income",
+       y = "Probability of Account Closure") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),  
+    axis.text.x = element_text(angle = 45, hjust = 1), 
+    axis.title.x = element_text(face = "bold"), 
+    axis.title.y = element_text(face = "bold"),  
+  )
+
+
+## -------------------------------------------------GENDER AND INCOME-------------------------------------------------------
+
+# Fit the logistic regression model with gender and income as regressors
+logit_model <- glm(Closed_Account ~ Income * Gender, 
+                   data = cleaned_bank_accounts_train, 
+                   family = binomial(link = "logit"))
+
+# Summarize the model
+summary(logit_model)
+
+# Plot the logistic regression model
+income_range <- with(cleaned_bank_accounts_train, 
+                     seq(min(Income, na.rm = TRUE), 
+                         max(Income, na.rm = TRUE), 
+                         length.out = 100))
+gender_levels <- levels(fact_bank_accounts_train$Gender)
+newdata <- expand.grid(Income = income_range, Gender = gender_levels)
+newdata$Probability <- predict(logit_model, newdata = newdata, type = "response")
+
+ggplot(newdata, aes(x = Income, y = Probability, color = Gender)) +
+  geom_line() +
+  labs(title = "Effect of Income and Gender on the Probability of Closing an Account",
+       x = "Income",
+       y = "Probability of Account Closure",
+       color = "Gender") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),  
+    axis.text.x = element_text(angle = 45, hjust = 1), 
+    axis.title.x = element_text(face = "bold"), 
+    axis.title.y = element_text(face = "bold"),  
+  )
+
+
+
+## ------------------------------------------KNN---------------------------------------------------------------------
+
+# Data preparation
+
+set.seed(42)
+
+knn_cleaned_bank_accounts <- encoded_bank_accounts_train %>% select(Total_Trans_Amt, Total_Trans_Ct, Closed_Account)
+
+p = 0.8
+division <- createDataPartition(knn_cleaned_bank_accounts$Closed_Account, times = 1, p = p, list = FALSE)
+
+# New sets of covariates and response variables
+knn_train <- knn_cleaned_bank_accounts[division,]
+knn_val <- knn_cleaned_bank_accounts[-division,]
+
+x_train <- knn_train %>% select(Total_Trans_Amt, Total_Trans_Ct)
+y_train <- knn_train$Closed_Account
+
+x_val <- knn_val %>% select(Total_Trans_Amt, Total_Trans_Ct)
+y_val <- knn_val$Closed_Account
+
+# Standardization of training set
+x_train_sc <- scale(x_train)
+
+# Standardization of validation set
+train_m <- apply(x_train, MARGIN = 2, FUN = mean)
+train_s <- apply(x_train, MARGIN = 2, FUN = sd)
+x_val_sc <- scale(x_val, center = train_m, scale = train_s)
+
+
+# IMPLEMENTATION OF K-NN MODEL
+
+k_grid <- 1:80
+
+# Model fitting (MISC/AUC calculation) for each value of k
+k_results <- sapply(k_grid, FUN = function (kk) {
+  # Model fitting
+  kk_fit_train <- knn(train = x_train, test = x_train, cl = y_train, k = kk, prob = TRUE)
+  kk_fit_val <- knn(train = x_train, test = x_val, cl = y_train, k = kk, prob = TRUE)
+  
+  # Misclassification error
+  kk_misc_in <- 1 - mean(y_train == kk_fit_train)
+  kk_misc_out <- 1 - mean(y_val == kk_fit_val)
+  
+  # AUC
+  kk_probyes_in <- ifelse(kk_fit_train == 1, attr(kk_fit_train, "prob"), 1 - attr(kk_fit_train, "prob"))
+  kk_probyes_out <- ifelse(kk_fit_val == 1, attr(kk_fit_val, "prob"), 1 - attr(kk_fit_val, "prob"))
+  kk_auc_in <- pROC::auc(y_train == 1, kk_probyes_in)
+  kk_auc_out <- pROC::auc(y_val == 1, kk_probyes_out)
+  
+  # Results
+  return(c(kk_misc_in, kk_misc_out, kk_auc_in, kk_auc_out))
+})
+
+
+# EVALUATION
+
+# Evaluation metrics on the grid
+misc_in <- k_results[1, ]
+misc_out <- k_results[2, ]
+auc_in <- k_results[3, ]
+auc_out <- k_results[4, ]
+
+# Plot the performance (MISC)
+plot(k_grid, misc_in, type = "b", lwd = 2, ylim = c(0, 0.3), main = "MISC train VS validation", ylab = "MISC", xlab = 'k')
+lines(k_grid, misc_out, type = "b", lwd = 2, col = 2, lty = 1)
+legend("topright", c("Train", "Validation"), col = c(1, 2), lty = c(1), bty = "n", pch = 21)
+
+# Best k using MISC
+k_best_misc <- k_grid[which.min(misc_out)]
+abline(v = k_best_misc, col = 4, lwd = 2)
+best_misc <- min(misc_out)
+
+# Plot the performance (AUC)
+plot(k_grid, auc_in, type = "b", lwd = 2, ylim = c(0.5, 1), main = "AUC train VS validation", ylab = "AUC", xlab = 'k')
+lines(k_grid, auc_out, type = "b", lwd = 2, col = 2, lty = 1)
+legend("topright", c("Train", "Validation"), col = c(1,2), lty = c(1), bty = "n", pch = 21)
+
+# Best k using AUC
+k_best_auc <- k_grid[which.max(auc_out)]
+abline(v = k_best_auc, col = 4, lwd = 2)
+best_auc <- max(auc_out)
+
+k_best_auc
+k_best_misc
+
+## ------------------------------------------------- FINDING BEST MODEL -----------------------------------------------------------------------------
+
+factorized_bank_accounts = fact_bank_accounts_train %>% select(-c(CLIENTNUM, Education_Level, Marital_Status))
+
+# New sets of covariates and response variables
+model_train <- factorized_bank_accounts[division,]
+model_val <- factorized_bank_accounts[-division,]
+
+x_train <- model_train %>% select(-Closed_Account)
+y_train <- model_train$Closed_Account
+
+x_val <- model_val %>% select(-Closed_Account)
+y_val <- model_val$Closed_Account
+
+
+# MULTIPLE LOGISTIC REGRESSION
+
+# Full analysis using all the predictors.
+
+logit_fit1 <- glm(Closed_Account ~ .,
+                  family = "binomial",
+                  data = model_train)
+#summary(logit_fit1)
+
+
+# Stepwise variable selection (based on AIC):
+
+# Forward
+logit_fit_aic1 <- step(glm(Closed_Account ~ 1,
+                           family = "binomial",
+                           data = model_train),
+                       scope = formula(logit_fit1),
+                       direction = "forward")
+
+# Backward
+logit_fit_aic2 <- step(logit_fit1,
+                       direction = "backward") 
+
+# Both directions
+logit_fit_aic3 <- step(logit_fit1,
+                       direction = "both")
+
+logit_fit_aic1$aic
+logit_fit_aic2$aic
+logit_fit_aic3$aic
+
+names(model_train)
+names(logit_fit_aic1$coefficients)
+
+
+# Stepwise variable selection (based on BIC):
+
+# Forward
+logit_fit_bic1 <- step(glm(Closed_Account ~ 1,
+                           family = "binomial",
+                           data = model_train),
+                       scope = formula(logit_fit1),
+                       direction = "forward",
+                       k = log(nrow(model_train)))
+
+# Backward
+logit_fit_bic2 <- step(logit_fit1,
+                       direction = "backward",
+                       k = log(nrow(model_train))) 
+
+# Both directions
+logit_fit_bic3 <- step(logit_fit1,
+                       direction = "both",
+                       k = log(nrow(model_train)))
+
+logit_fit_bic1$aic
+logit_fit_bic2$aic
+logit_fit_bic3$aic
+
+names(model_train)
+names(logit_fit_bic1$coefficients)
+
+setdiff(names(logit_fit_aic1$coefficients),names(logit_fit_aic2$coefficients))
+setdiff(names(logit_fit_aic2$coefficients),names(logit_fit_aic3$coefficients))
+setdiff(names(logit_fit_aic3$coefficients),names(logit_fit_aic1$coefficients))
+
+best_model = logit_fit_aic1
+best_model2 = logit_fit_bic1
+
+
+
+# Function to calculate AUC for a given model and validation data
+calculate_auc <- function(model, x_val, y_val) {
+  probabilities <- predict(model, newdata = x_val, type = "response")
+  roc_obj <- roc(y_val, probabilities)
+  return(auc(roc_obj))
+}
+
+# Calculate AUC for each model
+auc_aic1 <- calculate_auc(logit_fit_aic1, model_val, y_val)
+auc_aic2 <- calculate_auc(logit_fit_aic2, model_val, y_val)
+auc_aic3 <- calculate_auc(logit_fit_aic3, model_val, y_val)
+auc_bic1 <- calculate_auc(logit_fit_bic1, model_val, y_val)
+auc_bic2 <- calculate_auc(logit_fit_bic2, model_val, y_val)
+auc_bic3 <- calculate_auc(logit_fit_bic3, model_val, y_val)
+
+# Print AUC values for comparison
+cat("AUC AIC1:", auc_aic1, "\n",
+    "AUC AIC2:", auc_aic2, "\n",
+    "AUC AIC3:", auc_aic3, "\n",
+    "AUC BIC1:", auc_bic1, "\n",
+    "AUC BIC2:", auc_bic2, "\n",
+    "AUC BIC3:", auc_bic3, "\n")
+
+# Higher AUC is better, selecting the model with the highest AUC
+auc_values <- c(auc_aic1, auc_aic2, auc_aic3, auc_bic1, auc_bic2, auc_bic3)
+names(auc_values) <- c("aic1", "aic2", "aic3", "bic1", "bic2", "bic3")
+
+best_model_name <- names(which.max(auc_values))
+best_model <- get(paste("logit_fit", best_model_name, sep = "_"))
+
+cat("Best model is:", best_model_name, "with AUC of", max(auc_values), "\n")
+
+
+# Predict probabilities using the best model
+predicted_probabilities <- predict(best_model, newdata = cleaned_bank_accounts_test, type = "response")
+
+#Print or save the predicted probabilities
+#print(predicted_probabilities)
+write.csv(data.frame(CLIENTNUM = bank_accounts_test$CLIENTNUM, PredictedProbability = predicted_probabilities), "predicted_probabilities.csv", row.names = FALSE)
+
+
+
+## -----------------------------------------TRESHOLD FOR GAINS--------------------------------------------
+
+
+
+# Adjusting the threshold to 0.8 as specified
+tt <- 0.5
+
+# Prediction with threshold 0.8
+prob_out_best <- predict(best_model, newdata = model_val, type = "response")
+pred_out_best_binary <- ifelse(prob_out_best > tt, 1, 0)
+
+# Compute Confusion Matrix with '1' as the positive class
+CM <- table(Predicted = pred_out_best_binary, Actual = model_val$Closed_Account)
+
+# Adjusted definitions based on '1' being the positive class
+TP <- CM["1", "1"]  # True Positives
+TN <- CM["0", "0"]  # True Negatives
+FP <- CM["1", "0"]  # False Positives
+FN <- CM["0", "1"]  # False Negatives
+
+# Output the confusion matrix
+print(CM)
+
+# Financial outcome and metrics calculation can be adjusted as per these definitions
+# Example:
+gain_TP <- TP * 20  # Adjust gain from True Positives as per your model specifics
+gain_TN <- TN * 50  # Adjust gain from True Negatives
+loss_FP <- FP * 20  # Adjust loss from False Positives
+loss_FN <- FN * (-50)  # Adjust loss from False Negatives
+
+total_financial_outcome <- gain_TP + gain_TN + loss_FP + loss_FN
+
+# Relevant Metrics
+accuracy <- (TP + TN) / sum(CM)
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)  # Also known as sensitivity
+F1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Output the metrics
+cat("Treshold: ", tt, "\n",
+    "Financial Gain: ", total_financial_outcome, "\n",
+    "Accuracy: ", accuracy, "\n",
+    "Precision: ", precision, "\n",
+    "Recall (Sensitivity): ", recall, "\n",
+    "F1 Score: ", F1_score, "\n")
+
+
+
+
+# Calculate the ROC curve
+roc_obj <- roc(response = model_val$Closed_Account, predictor = prob_out_best, levels = c("0", "1"))
+
+# Print AUC
+auc_value2 <- auc(roc_obj)
+print(paste("AUC:", auc_value2))
+
+# Create a data frame from the roc object 
+roc_data <- data.frame(
+  TPR = roc_obj$sensitivities,
+  FPR = roc_obj$specificities,
+  Thresholds = roc_obj$thresholds
+)
+
+# Plot the ROC curve 
+ggplot(roc_data, aes(x = 1 - FPR, y = TPR)) + 
+  geom_line(color = "#1c61b6", size = 1) +
+  geom_area(fill = "#1c61b624") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  annotate("text", x = 0.8, y = 0.2, label = paste("AUC:", round(auc(roc_obj), 3)), hjust = 0, color = "#1c61b6") +
+  theme_minimal() +
+  labs(
+    title = "ROC Curve",
+    x = "1 - Specificity (False Positive Rate)",
+    y = "Sensitivity (True Positive Rate)"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+
+
+
+
+
+
+
+## -----------------------------------
+
+
+# Adjusting the threshold to 0.8 as specified
+tt <- 0.2
+
+# Prediction with threshold 0.8
+prob_out_best <- predict(best_model, newdata = model_val, type = "response")
+pred_out_best_binary <- ifelse(prob_out_best > tt, 1, 0)
+
+# Compute Confusion Matrix with '1' as the positive class
+CM <- table(Predicted = pred_out_best_binary, Actual = model_val$Closed_Account)
+
+# Adjusted definitions based on '1' being the positive class
+TP <- CM["1", "1"]  # True Positives
+TN <- CM["0", "0"]  # True Negatives
+FP <- CM["1", "0"]  # False Positives
+FN <- CM["0", "1"]  # False Negatives
+
+# Output the confusion matrix
+print(CM)
+
+# Financial outcome and metrics calculation can be adjusted as per these definitions
+# Example:
+gain_TP <- TP * 20  # Adjust gain from True Positives as per your model specifics
+gain_TN <- TN * 50  # Adjust gain from True Negatives
+loss_FP <- FP * 20  # Adjust loss from False Positives
+loss_FN <- FN * (-50)  # Adjust loss from False Negatives
+
+total_financial_outcome <- gain_TP + gain_TN + loss_FP + loss_FN
+
+# Relevant Metrics
+accuracy <- (TP + TN) / sum(CM)
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)  # Also known as sensitivity
+F1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Output the metrics
+cat("Treshold: ", tt, "\n",
+    "Financial Gain: ", total_financial_outcome, "\n",
+    "Accuracy: ", accuracy, "\n",
+    "Precision: ", precision, "\n",
+    "Recall (Sensitivity): ", recall, "\n",
+    "F1 Score: ", F1_score, "\n")
+
+
+
+## --------------------------------------------------------------------------------------
+
+
+# Adjusting the threshold to 0.8 as specified
+tt <- 0.8
+
+# Prediction with threshold 0.8
+prob_out_best <- predict(best_model, newdata = model_val, type = "response")
+pred_out_best_binary <- ifelse(prob_out_best > tt, 1, 0)
+
+# Compute Confusion Matrix with '1' as the positive class
+CM <- table(Predicted = pred_out_best_binary, Actual = model_val$Closed_Account)
+
+# Adjusted definitions based on '1' being the positive class
+TP <- CM["1", "1"]  # True Positives
+TN <- CM["0", "0"]  # True Negatives
+FP <- CM["1", "0"]  # False Positives
+FN <- CM["0", "1"]  # False Negatives
+
+# Output the confusion matrix
+print(CM)
+
+# Financial outcome and metrics calculation can be adjusted as per these definitions
+# Example:
+gain_TP <- TP * 20  # Adjust gain from True Positives as per your model specifics
+gain_TN <- TN * 50  # Adjust gain from True Negatives
+loss_FP <- FP * 20  # Adjust loss from False Positives
+loss_FN <- FN * (-50)  # Adjust loss from False Negatives
+
+total_financial_outcome <- gain_TP + gain_TN + loss_FP + loss_FN
+
+# Relevant Metrics
+accuracy <- (TP + TN) / sum(CM)
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)  # Also known as sensitivity
+F1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Output the metrics
+cat("Treshold: ", tt, "\n",
+    "Financial Gain: ", total_financial_outcome, "\n",
+    "Accuracy: ", accuracy, "\n",
+    "Precision: ", precision, "\n",
+    "Recall (Sensitivity): ", recall, "\n",
+    "F1 Score: ", F1_score, "\n")
+
+
+
+## -----------------------------------------------------------------------------------------
+
+
+# Adjusting the threshold to 0.8 as specified
+tt <- 0.28
+
+# Prediction with threshold 0.8
+prob_out_best <- predict(best_model, newdata = model_val, type = "response")
+pred_out_best_binary <- ifelse(prob_out_best > tt, 1, 0)
+
+# Compute Confusion Matrix with '1' as the positive class
+CM <- table(Predicted = pred_out_best_binary, Actual = model_val$Closed_Account)
+
+# Adjusted definitions based on '1' being the positive class
+TP <- CM["1", "1"]  # True Positives
+TN <- CM["0", "0"]  # True Negatives
+FP <- CM["1", "0"]  # False Positives
+FN <- CM["0", "1"]  # False Negatives
+
+# Output the confusion matrix
+print(CM)
+
+# Financial outcome and metrics calculation can be adjusted as per these definitions
+# Example:
+gain_TP <- TP * 20  # Adjust gain from True Positives as per your model specifics
+gain_TN <- TN * 50  # Adjust gain from True Negatives
+loss_FP <- FP * 20  # Adjust loss from False Positives
+loss_FN <- FN * (-50)  # Adjust loss from False Negatives
+
+total_financial_outcome <- gain_TP + gain_TN + loss_FP + loss_FN
+
+# Relevant Metrics
+accuracy <- (TP + TN) / sum(CM)
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)  # Also known as sensitivity
+F1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Output the metrics
+cat("Treshold: ", tt, "\n",
+    "Financial Gain: ", total_financial_outcome, "\n",
+    "Accuracy: ", accuracy, "\n",
+    "Precision: ", precision, "\n",
+    "Recall (Sensitivity): ", recall, "\n",
+    "F1 Score: ", F1_score, "\n")
+
+
